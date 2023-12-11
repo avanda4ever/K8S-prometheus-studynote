@@ -1,47 +1,76 @@
-# K8S-prometheus-studynote记录k8s部署踩坑及promtheus部署踩坑
-## K8S部署
+# K8S-prometheus-studynote
 
-### 部署版本v1.25.xx
+# 记录k8s部署踩坑及promtheus部署踩坑
 
-正常部署顺序
+## 配置文件及脚本
 
-包含kubelet无法使用docker启动解决方案
+### kube-kuberbnetes-conf
 
-kubelet使用containerd部署启动方案
+包含手撸K8S配置文件，及cert生成脚本，kubeconfig文件生成脚本等，可配合文档使用
 
-包含二进制部署各个组件配置脚本
+随时更新。。。
 
 ## prometheus
 
-prometheus常规部署方案
+包含prometheus&K8S全部yaml
 
-prometheus高可用
+随时更新。。。
 
-prometheus自动发现
+## images
 
-prometheus&alertmanger告警配置
+忽略，部署过程截图
 
-alertmanger告警推送（企业微信webhook&邮件）
+## K8S部署篇
 
-## prometheus&K8S
+### 部署版本v1.25.xx
 
-### promethues部署脚本
+正常部署顺序（手撸二进制）
 
-prometheus-configmap.yaml
+- 包含kubelet无法使用docker启动解决方案
 
-prometheus-deployment.yaml
+- kubelet使用containerd部署启动方案
 
-prometheus-service.yaml
+- 包含二进制部署各个组件配置脚本
 
-prometheus-rbac-setup.yaml
 
-blackbox-exporter.yaml
+## 监控爬坑计划（prometheus）
 
-node-exporter-daemonset.yml
+包含但不限于如下，随时更新：
+
+- prometheus常规部署方案
+
+- prometheus高可用
+
+- prometheus自动发现
+
+- prometheus&alertmanger告警配置
+
+- alertmanger告警推送（企业微信webhook&邮件）
+
+
+## 监控爬坑计划（prometheus&K8S）
+
+包含但不限于：
+
+### promethues部署
+
+- prometheus-configmap.yaml
+
+- prometheus-deployment.yaml
+
+- prometheus-service.yaml
+
+- prometheus-rbac-setup.yaml
+
+- blackbox-exporter.yaml
+
+- node-exporter-daemonset.yml
+
 
 ### prometheus完整监控
 
-prometheus-configmap.yaml.all
+- prometheus-configmap.yaml.all
+
 
 > 包含各个组件target配置
 >
@@ -49,11 +78,13 @@ prometheus-configmap.yaml.all
 
 ### cadvsior&kube-state-metrics
 
-prometheus-configmap.yaml
+- prometheus-configmap.yaml
+
 
 > 包含cadvsior&kube-state-merics实现监控
 
-./kube-state-metrics-2.7.0/examples/standard
+- ./kube-state-metrics-2.7.0/examples/standard
+
 
 > 包含kube-state-merics完整配置文件
 >
@@ -65,9 +96,10 @@ prometheus-configmap.yaml
 
 ## Grafana
 
-含有grafana docker部署方式
+- 含有grafana docker部署方式
 
-含grafana推荐模版--详见具体文档
+- 含grafana推荐模版--详见具体文档
+
 
 ## ...待更新
 

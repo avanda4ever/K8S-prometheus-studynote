@@ -6,7 +6,7 @@ Kubernetes将一系列的主机看做是一个受管理的海量资源，这些�
 
 ### kubernetes应用管理模型
 
-![kubernetes-app-model](/Users/luwenxin/Documents/待办markdown/监控部署笔记/images/kubernetes-app-model.png)
+![kubernetes-app-model](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/kubernetes-app-model.png)
 
 
 
@@ -28,7 +28,7 @@ Kubernetes中提供了多种Controller的实现，包括：
 
 ### kuberenetes架构模型
 
-![pre-ccm-arch](/Users/luwenxin/Documents/待办markdown/监控部署笔记/images/pre-ccm-arch.png)
+![pre-ccm-arch](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/pre-ccm-arch.png)
 
 **Master组件**
 
@@ -267,7 +267,7 @@ cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=www 
 #-profile：指定证书生成策略文件中的的使用场景，比如 ca-config.json 中的 www
 ```
 
-![image-20231205153326277](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231205153326277.png)
+![image-20231205153326277](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231205153326277.png)
 
 #### 安装etcd
 
@@ -395,11 +395,11 @@ ETCDCTL_API=3 /data/etcd/bin/etcdctl --cacert=/data/etcd/ssl/ca.pem --cert=/data
 ETCDCTL_API=3 /data/etcd/bin/etcdctl --cacert=/data/etcd/ssl/ca.pem --cert=/data/etcd/ssl/server.pem --key=/data/etcd/ssl/server-key.pem --endpoints="https://10.206.0.12:2379,https://10.206.0.11:2379" endpoint status --write-out=table
 ```
 
-![image-20231205162758779](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231205162758779.png)
+![image-20231205162758779](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231205162758779.png)
 
-![image-20231205162823706](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231205162823706.png)
+![image-20231205162823706](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231205162823706.png)
 
-![image-20231205162844773](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231205162844773.png)
+![image-20231205162844773](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231205162844773.png)
 
 ### 部署master组件
 
@@ -542,7 +542,7 @@ cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kube
 #-profile：指定证书生成策略文件中的的使用场景，比如 ca-config.json 中的 kubernetes
 ```
 
-![image-20231205172655545](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231205172655545.png)
+![image-20231205172655545](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231205172655545.png)
 
 #### 部署Api-Server组件
 
@@ -575,7 +575,7 @@ ${urandom},kubelet-bootstrap,10001,"system:node-bootstrapper"
 EOF
 ```
 
-![image-20231205175528890](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231205175528890.png)
+![image-20231205175528890](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231205175528890.png)
 
 ##### 创建kube-apiserver配置文件
 
@@ -689,7 +689,7 @@ systemctl start kube-apiserver
 systemctl enable kube-apiserver
 ```
 
-![image-20231205230757859](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231205230757859.png)
+![image-20231205230757859](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231205230757859.png)
 
 ##### 绑定kubelet-bootstrap到集群
 
@@ -699,7 +699,7 @@ kubectl create clusterrolebinding kubelet-bootstrap \
   --user=kubelet-bootstrap
 ```
 
-![image-20231206112135087](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231206112135087.png)
+![image-20231206112135087](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231206112135087.png)
 
 > 若报错***error: failed to create clusterrolebinding: post "http://localhost:8080/apis/rbac.authorization.k8s.io/v1/clusterrolebindings?fieldmanager=kubectl-create&fieldvalidation=strict": dial tcp [::1]:8080: connect: connection refused***
 >
@@ -758,7 +758,7 @@ cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kube
 kubectl config set-cluster kubernetes --certificate-authority=ca.pem --embed-certs=true --server=https://10.206.0.12:6443 --kubeconfig=kube.config
 ```
 
-![image-20231206111651051](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231206111651051.png)
+![image-20231206111651051](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231206111651051.png)
 
 ```shell
 #设置客户端认证参数
@@ -935,7 +935,7 @@ systemctl start kube-controller-manager.service
 kubectl get componentstatuses
 ```
 
-![image-20231206171530124](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231206171530124.png)
+![image-20231206171530124](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231206171530124.png)
 
 #### 部署 kube-scheduler
 
@@ -1020,7 +1020,7 @@ systemctl start kube-controller-manager.service
 kubectl get componentstatuses
 ```
 
-![image-20231206174231100](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231206174231100.png)
+![image-20231206174231100](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231206174231100.png)
 
 ### 部署node节点
 
@@ -1337,7 +1337,7 @@ kubectl get csr
 kubectl get node
 ```
 
-![image-20231207114621625](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231207114621625.png)
+![image-20231207114621625](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231207114621625.png)
 
 ##### 部署中报错
 
@@ -1516,7 +1516,7 @@ systemctl start kube-proxy
 systemctl status kube-proxy
 ```
 
-![image-20231207152007677](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231207152007677.png)
+![image-20231207152007677](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231207152007677.png)
 
 ### 部署网络组件
 
@@ -1582,7 +1582,7 @@ kubectl get pod -n kube-system
 kubectl get nodes
 ```
 
-![image-20231207211319012](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231207211319012.png)
+![image-20231207211319012](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231207211319012.png)
 
 ### 部署CoreDns
 
@@ -1635,7 +1635,7 @@ kubectl apply -f coredns.yaml
 kubectl get pod -A
 ```
 
-![image-20231207211241435](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231207211241435.png)
+![image-20231207211241435](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231207211241435.png)
 
 #### buzybox验证
 
@@ -1644,7 +1644,7 @@ kubectl get pod -A
  nslookup kubernetes
 ```
 
-![image-20231207211836101](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231207211836101.png)
+![image-20231207211836101](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231207211836101.png)
 
 ### 部署DashBoard
 
@@ -1728,7 +1728,7 @@ https://10.206.0.11:30001
 kubectl describe secrets -n kubernetes-dashboard admin-user
 ```
 
-![image-20231207214750927](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231207214750927.png)
+![image-20231207214750927](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231207214750927.png)
 
-![image-20231207214817889](/Users/luwenxin/Library/Application Support/typora-user-images/image-20231207214817889.png)
+![image-20231207214817889](/Users/luwenxin/Documents/Study/K8S与监控学习笔记/images/image-20231207214817889.png)
 

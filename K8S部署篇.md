@@ -1732,3 +1732,293 @@ kubectl describe secrets -n kubernetes-dashboard admin-user
 
 ![image-20231207214817889](./images/image-20231207214817889.png)
 
+### 部署NFS与StorageClass
+
+#### 部署NFS
+
+##### 挂载新硬盘
+
+```shell
+mkfs.ext4 /dev/vdb
+mount /dev/vdb /nfs
+vim /etc/fstab 
+/dev/vdb /nfs   ext4 defaults 0 2
+```
+
+##### 安装NFS服务
+
+```shell
+yum install nfs-utils -y
+
+cat >> /etc/exports <<EOF
+/nfs *(rw,sync,no_subtree_check,no_root_squash,insecure)
+EOF
+#rw: 权限设置，可读可写。
+#sync: 同步共享目录。
+#no_root_squash: 可以使用 root 授权。
+#no_all_squash: 可以使用普通用户授权。
+systemctl restart nfs
+systemctl restart rpcbind
+showmount -e localhost
+```
+
+#### 部署SC
+
+##### 创建namespace
+
+```shel
+kubectl create namespace storageclass
+```
+
+##### 创建RBAC
+
+```shell
+cat > storagecalss-rbac.yaml << EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nfs-client-provisioner
+  # replace with namespace where provisioner is deployed
+  namespace: storageclass
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nfs-client-provisioner-runner
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "update", "patch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: run-nfs-client-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: nfs-client-provisioner
+    namespace: storageclass
+roleRef:
+  kind: ClusterRole
+  name: nfs-client-provisioner-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-locking-nfs-client-provisioner
+  # replace with namespace where provisioner is deployed
+  namespace: storageclass
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-locking-nfs-client-provisioner
+  # replace with namespace where provisioner is deployed
+  namespace: storageclass
+subjects:
+  - kind: ServiceAccount
+    name: nfs-client-provisioner
+    # replace with namespace where provisioner is deployed
+    namespace: storageclass
+roleRef:
+  kind: Role
+  name: leader-locking-nfs-client-provisioner
+  apiGroup: rbac.authorization.k8s.io
+EOF
+```
+
+##### 创建deployment
+
+```shell
+cat > nfs-client-provisioner-deployment.yaml << EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-client-provisioner
+  labels:
+    app: nfs-client-provisioner
+  namespace: storageclass
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nfs-client-provisioner
+  template:
+    metadata:
+      labels:
+        app: nfs-client-provisioner
+    spec:
+      serviceAccountName: nfs-client-provisioner
+      containers:
+        - name: nfs-client-provisioner
+          image: quay.io/external_storage/nfs-client-provisioner:latest
+          volumeMounts:
+            - name: nfs-client-root
+              mountPath: /persistentvolumes
+          env:
+            - name: PROVISIONER_NAME
+              value: fuseim.pri/ifs
+            - name: NFS_SERVER
+              value: 10.206.0.11
+            - name: NFS_PATH
+              value: /nfs
+      volumes:
+        - name: nfs-client-root
+          nfs:
+            server: 10.206.0.11
+            path: /nfs
+EOF
+```
+
+![image-20231212000639775](./images/image-20231212000639775.png)
+
+##### 创建StorageClass
+
+```shell
+cat > storageclass.yaml << EOF
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-nfs-storage
+provisioner: fuseim.pri/ifs
+parameters:
+  archiveOnDelete: "false"
+EOF
+```
+
+到nfs服务端查看挂载情况
+
+![image-20231212001722070](./images/image-20231212001722070.png)
+
+```shell
+#查看sc状态
+kubectl get sc
+
+[root@node01 nfs]# kubectl get sc
+NAME                  PROVISIONER      RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+managed-nfs-storage   fuseim.pri/ifs   Delete          Immediate           false                  5m24s
+```
+
+- **NAME：** 存储类的名称。在这里，存储类的名称为 `managed-nfs-storage`。
+- **PROVISIONER：** 存储类使用的卷插件（provisioner）。在这里，`fuseim.pri/ifs` 是卷插件的名称，它负责为存储类创建卷（volumes）。
+- **RECLAIMPOLICY：** 存储类的回收策略。在这里，回收策略为 `Delete`，表示在释放 PersistentVolume（PV）时删除底层存储资源。
+- **VOLUMEBINDINGMODE：** 卷绑定模式，指定动态分配卷的时机。在这里，`Immediate` 表示在请求 PersistentVolumeClaim（PVC）时立即动态分配卷。
+- **ALLOWVOLUMEEXPANSION：** 表示是否允许卷的扩展。在这里，值为 `false`，表示不允许卷的扩展。
+- **AGE：** 存储类的创建时间，表示存储类存在的时间长短。在这里，`5m24s` 表示存储类已经存在了5分钟24秒。
+
+##### 创建测试pod验证
+
+###### 创建测试pvc
+
+```shell
+cat > test-claim.yaml << EOF
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-claim
+  namespace: storageclass
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: managed-nfs-storage
+  resources:
+    requests:
+      storage: 5Mi
+EOF
+```
+
+###### 验证PVC
+
+```shell
+kubectl get pvc -A
+```
+
+###### pvc一直为pending
+
+测试发现pvc状态一直为pending，查看nfs-client对应pod log发现报错
+
+```shell
+E1212 02:29:26.919584       1 controller.go:1004] provision "storageclass/test-claim" class "managed-nfs-storage": unexpected error getting claim reference: selfLink was empty, can't make reference
+```
+
+主要原因为v1.20.xx以上版本后selfLink默认为true，无法创建pvc
+
+- 若版本为v1.20以上且小于v1.24，需要在apiserver配置文件中加入如下配置，然后重启apisever
+
+```shell
+--feature-gates=RemoveSelfLink=false
+```
+
+- 若版本大于v1.24，上述配置无效，且会导致apiserver服务异常，需更换nfs-deployment中镜像为
+
+```shell
+image: registry.cn-beijing.aliyuncs.com/xngczl/nfs-subdir-external-provisione:v4.0.0
+
+# `NFS-Subdir-External-Provisioner`是一个自动配置卷程序，它使用现有的和已配置的 NFS 服务器来支持通过持久卷声明动态配置 Kubernetes 持久卷。
+#持久卷被配置为：`${namespace}-${pvcName}-${pvName}`。
+#组件是对旧版本 nfs-client-provisioner 的扩展，[nfs-client-provisioner](https://github.com/kubernetes-retired/external-storage/tree/master/nfs-client) 已经不提供更新，且 nfs-client-provisioner 的 Github 仓库已经迁移到 [NFS-Subdir-External-Provisioner](https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner) 的仓库。
+#GitHub 地址：https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner
+```
+
+![image-20231212110031172](./images/image-20231212110031172.png)
+
+###### 创建测试pod
+
+```shell
+cat > test-pod.yaml << EOF
+kind: Pod
+apiVersion: v1
+metadata:
+  name: test-pod
+  namespace: storageclass
+spec:
+  containers:
+  - name: test-pod
+    image: busybox:1.24
+    command:
+      - "/bin/sh"
+    args:
+      - "-c"
+      - "touch /mnt/SUCCESS && exit 0 || exit 1"
+    volumeMounts:
+      - name: nfs-pvc
+        mountPath: "/mnt"
+  restartPolicy: "Never"
+  volumes:
+    - name: nfs-pvc
+      persistentVolumeClaim:
+        claimName: test-claim
+EOF
+```
+
+###### 验证nfs服务器上文件是否创建
+
+```shell
+cd /nfs/cd storageclass-test-claim-pvc-81c3e96e-3325-47da-81dd-35172e44a61f/
+ls
+```
+
+![image-20231212110648270](./images/image-20231212110648270.png)
+
+```shell
+kubectl get pv -A
+kubectl get pvc -A
+```
+
+![image-20231212110829207](./images/image-20231212110829207.png)

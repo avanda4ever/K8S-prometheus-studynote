@@ -36,6 +36,8 @@ grafana配置文件及模版json
 
 - 包含二进制部署各个组件配置脚本
 
+- 部署stroageclass，爬坑1.24+以上selfLink导致pvc处于pending
+
 
 ## 监控爬坑计划（prometheus）
 

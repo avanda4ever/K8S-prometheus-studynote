@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: default
+data:
+  alertmanager.yml: |-
+    global:
+      resolve_timeout: 5m
+    #templates:
+    #   - '/export/alertmanager/template/*.tmpl'
+      #这里要加载template的文件
+    # 定义路由树信息
+    route:
+      group_by: ['alertname']
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 30m
+      receiver: 'prometheus'
+      routes:
+      - receiver: 'prometheus'  
+        group_wait: 60s
+        match:
+          level: '1'
+    receivers:
+        - name: 'prometheus'  
+          webhook_configs:
+          - url: 'http://10.0.0.98:8089/adapter/wx'
+            send_resolved: true
+    #抑制规则
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'dev', 'instance']

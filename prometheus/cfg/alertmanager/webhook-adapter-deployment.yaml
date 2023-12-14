@@ -1,0 +1,44 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: webhook-adapter
+  labels:
+    name: webhook-adapter
+spec:
+  selector:
+    app: webhook-adapter
+  ports:
+  - protocol: TCP
+    port: 8089
+    targetPort: 8089
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: webhook-adapter
+  name: webhook-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webhook-adapter
+  template:
+    metadata:
+      labels:
+        app: webhook-adapter
+    spec:
+      containers:
+      - name: webhook-adapter
+        image: guyongquan/webhook-adapter:latest
+        command:
+        - "/usr/local/bin/node"
+        args:
+        - "/app/index.js"
+        - "--port=8089"
+        - "--adapter=/app/prometheusalert/wx.js=/wx=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=c7305ec5-ad97-4da2-82e7-edaf546238ab"
+        ports:
+        - containerPort: 8089
+          protocol: TCP

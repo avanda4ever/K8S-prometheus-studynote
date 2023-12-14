@@ -12,7 +12,7 @@
 
 ## prometheus
 
-包含prometheus&K8S全部yaml
+包含prometheus&K8S相关全部yaml
 
 随时更新。。。
 
@@ -36,7 +36,7 @@ grafana配置文件及模版json
 
 - 包含二进制部署各个组件配置脚本
 
-- 部署stroageclass，爬坑1.24+以上selfLink导致pvc处于pending
+- 部署stroageclass，包含处理1.24+以上selfLink导致pvc处于pending
 
 
 ## 监控爬坑计划（prometheus）
@@ -56,7 +56,7 @@ grafana配置文件及模版json
 
 ## 监控爬坑计划（prometheus&K8S）
 
-包含但不限于：
+文档包含但不限于，详细见文档：
 
 ### promethues部署
 
@@ -99,6 +99,28 @@ grafana配置文件及模版json
 > 已更改prometheus自动发现
 >
 > 可直接kubectl apply -f .
+
+### Alertmanager&rules
+
+- alertmanager-configmap.yaml
+
+> 企业微信机器人webhook
+
+- alertmanager-configmap.yaml.email
+
+> 邮箱
+
+- alertmanager-deployment.yaml
+
+> alertmanager
+
+- alertmanager-ger-tem-configmap.yaml
+
+> 邮件模版
+
+- webhook-adapter-deployment.yaml
+
+> 第三方weebhook插件
 
 ## Grafana
 

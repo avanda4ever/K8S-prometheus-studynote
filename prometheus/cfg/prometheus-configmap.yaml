@@ -10,6 +10,12 @@ data:
       evaluation_interval: 15s
       external_labels:
         cluster: "kubernetes"
+    rule_files:
+    - /etc/prometheus/rules/*.rules
+    alerting:
+      alertmanagers:
+      - static_configs:
+          - targets: ["10.0.0.136:9093"]
     scrape_configs:
     ############################ kubernetes-cadvisor ##############################
     - job_name: 'kubernetes-cadvisor'

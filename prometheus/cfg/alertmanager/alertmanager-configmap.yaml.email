@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: default
+data:
+  alertmanager.yml: |-
+    global:
+      smtp_smarthost: smtp.qq.com:587
+      smtp_from: 153464630@qq.com
+      smtp_auth_username: 153464630@qq.com
+      ##smtp_auth_identity: <username>
+      smtp_auth_password: fhiuplqafrskbjie
+      smtp_require_tls: false
+    route:
+      group_by: ['alertname']
+      receiver: 'default-receiver'
+      routes:
+      - receiver: email
+        group_wait: 10s
+        match:
+          team: node
+    templates:
+      - '/etc/alertmanager/template/email.tmpl'
+    receivers:
+      - name: 'default-receiver'
+        email_configs:
+        - to: '153464630@qq.com'
+          html: '{{ template "email.html" . }}'
+          headers: { Subject: "[WARN] Prometheus 告警邮件" }
+          send_resolved: true
+      - name: 'email'
+        email_configs:
+        - to: '153464630@qq.com'
+          send_resolved: true

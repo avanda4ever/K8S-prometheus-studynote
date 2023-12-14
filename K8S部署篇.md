@@ -2022,3 +2022,33 @@ kubectl get pvc -A
 ```
 
 ![image-20231212110829207](./images/image-20231212110829207.png)
+
+#### 命令拓展
+
+```shell
+#查看pod所挂载pvc
+kubectl get pod $(kubectl get pod | grep alert | awk '{print$1}') -o=jsonpath='{.spec.volumes[*].persistentVolumeClaim.claimName}'
+#查看pod所挂载pvc并获取详细信息
+kubectl get pod $(kubectl get pod | grep alert | awk '{print$1}') -o=jsonpath='{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}' | xargs -I {} kubectl describe pvc {}
+```
+
+```shell
+[root@master01 data]# kubectl get pod $(kubectl get pod | grep alert | awk '{print$1}') -o=jsonpath='{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}' | xargs -I {} kubectl describe pvc {}
+Name:          alertmanager
+Namespace:     default
+StorageClass:  managed-nfs-storage
+Status:        Bound
+Volume:        pvc-0e2992f6-dd22-4a65-81f2-589d957bde51
+Labels:        <none>
+Annotations:   pv.kubernetes.io/bind-completed: yes
+               pv.kubernetes.io/bound-by-controller: yes
+               volume.beta.kubernetes.io/storage-provisioner: fuseim.pri/ifs
+               volume.kubernetes.io/storage-provisioner: fuseim.pri/ifs
+Finalizers:    [kubernetes.io/pvc-protection]
+Capacity:      2Gi
+Access Modes:  RWO
+VolumeMode:    Filesystem
+Used By:       alertmanager-6765944774-sd7v9
+Events:        <none>
+```
+

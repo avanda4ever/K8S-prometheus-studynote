@@ -47,7 +47,7 @@ Node组件会运行在集群的所有节点上，它们负责管理和维护节�
 - kube-proxy：负责维护主机上的网络规则以及转发。
 - Container Runtime：如Docker,rkt,runc等提供容器运行时环境。
 
-## 搭建方式（二进制）
+## 搭建（二进制）
 
 ### 搭建准备
 
@@ -106,7 +106,7 @@ ntpdate time.windows.com
 
 #配置免密登陆
 ssh-keygen -t rsa
-ssh-copy-id -i .ssh/id_rsa.pub node01
+ssh-copy-id -i /root/.ssh/id_rsa.pub node01
 
 ```
 
@@ -1319,7 +1319,7 @@ WantedBy=multi-user.target
 systemctl daemon-reload
 systemctl enable kubelet
 systemctl restart kubelet
-systemctl stasus kubelet
+systemctl status kubelet
 ```
 
 ##### csr绑定
@@ -1378,6 +1378,33 @@ sandbox_image = "registry.aliyuncs.com/google_containers/pause:3.9"
 #加载并重启
 systemctl daemon-reload && systemctl restart containerd
 ```
+
+###### 5.记一次添加新节点未覆盖新配置文件导致节点添加失败
+
+问题起因:
+
+- 添加新节点，复制旧节点配置文件和bootstrap文件至新节点后忘记更改配置中node_ip为当前节点ip，配置后启动kubelet，无明显报错，启动正常。
+
+问题发现：
+
+- 绑定csr时，发现节点状态为pending，以为是新节点，直接进行aprove，绑定后查看csr状态，无异常
+- 查看节点状态，发现并无新节点信息？
+- 查看kubelet日志，报错为节点网络异常，查看calico，无新增节点pod？
+
+问题解决:
+
+- 查看kubelet配置文件，发现启动配置和组件配置均未更改就IP地址！
+- 手动停止kubelet服务，更改配置文件。重启后查看日志，报错未找到当前IP，怀疑为kubelet.kubeconfig中仍然绑定着之前信息。
+- 由于kubeconfig在服务启动时自动生成，所以手动删除kubelet.kubeconfig文件。重新启动服务。
+- 查看路径并未生成kubeconfig。。。
+
+- 怀疑为kubelet旧证书文件已经生效，查看证书路径kubelet证书生成时间果然为第一次启动kubelet时间。
+- 停止服务，删除证书，重启服务。新kubeconfig文件生成，证书生成
+- 正常绑定csr后，节点出现
+
+问题复盘：
+
+- 整个问题出现原因为疏忽大意，未更新ip。bootstrap第一次授权后，这期间只要kubelet与apiserver间通信正常，kubelet正常生成kubeconfig和证书，服务不会启动失败。所以仅靠status状态无法判断是否正常。需要及时查看日志。
 
 #### 部署kube-proxy
 
@@ -1732,11 +1759,11 @@ kubectl describe secrets -n kubernetes-dashboard admin-user
 
 ![image-20231207214817889](./images/image-20231207214817889.png)
 
-### 部署NFS与StorageClass
+## NFS与StorageClass
 
-#### 部署NFS
+### 部署NFS
 
-##### 挂载新硬盘
+#### 挂载新硬盘
 
 ```shell
 mkfs.ext4 /dev/vdb
@@ -1745,7 +1772,7 @@ vim /etc/fstab
 /dev/vdb /nfs   ext4 defaults 0 2
 ```
 
-##### 安装NFS服务
+#### 安装NFS服务
 
 ```shell
 yum install nfs-utils -y
@@ -1762,15 +1789,15 @@ systemctl restart rpcbind
 showmount -e localhost
 ```
 
-#### 部署SC
+### 部署SC
 
-##### 创建namespace
+#### 创建namespace
 
 ```shel
 kubectl create namespace storageclass
 ```
 
-##### 创建RBAC
+#### 创建RBAC
 
 ```shell
 cat > storagecalss-rbac.yaml << EOF
@@ -1841,7 +1868,7 @@ roleRef:
 EOF
 ```
 
-##### 创建deployment
+#### 创建deployment
 
 ```shell
 cat > nfs-client-provisioner-deployment.yaml << EOF
@@ -1872,6 +1899,7 @@ spec:
             - name: nfs-client-root
               mountPath: /persistentvolumes
           env:
+          	#自定义provisioner_name，用于sc绑定
             - name: PROVISIONER_NAME
               value: fuseim.pri/ifs
             - name: NFS_SERVER
@@ -1888,7 +1916,7 @@ EOF
 
 ![image-20231212000639775](./images/image-20231212000639775.png)
 
-##### 创建StorageClass
+#### 创建StorageClass
 
 ```shell
 cat > storageclass.yaml << EOF
@@ -1896,6 +1924,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: managed-nfs-storage
+#与development中相同
 provisioner: fuseim.pri/ifs
 parameters:
   archiveOnDelete: "false"
@@ -1922,9 +1951,9 @@ managed-nfs-storage   fuseim.pri/ifs   Delete          Immediate           false
 - **ALLOWVOLUMEEXPANSION：** 表示是否允许卷的扩展。在这里，值为 `false`，表示不允许卷的扩展。
 - **AGE：** 存储类的创建时间，表示存储类存在的时间长短。在这里，`5m24s` 表示存储类已经存在了5分钟24秒。
 
-##### 创建测试pod验证
+#### 创建测试pod验证
 
-###### 创建测试pvc
+##### 创建测试pvc
 
 ```shell
 cat > test-claim.yaml << EOF
@@ -1943,13 +1972,13 @@ spec:
 EOF
 ```
 
-###### 验证PVC
+##### 验证PVC
 
 ```shell
 kubectl get pvc -A
 ```
 
-###### pvc一直为pending
+##### pvc一直为pending
 
 测试发现pvc状态一直为pending，查看nfs-client对应pod log发现报错
 
@@ -1978,7 +2007,7 @@ image: registry.cn-beijing.aliyuncs.com/xngczl/nfs-subdir-external-provisione:v4
 
 ![image-20231212110031172](./images/image-20231212110031172.png)
 
-###### 创建测试pod
+##### 创建测试pod
 
 ```shell
 cat > test-pod.yaml << EOF
@@ -2007,7 +2036,7 @@ spec:
 EOF
 ```
 
-###### 验证nfs服务器上文件是否创建
+##### 验证nfs服务器上文件是否创建
 
 ```shell
 cd /nfs/cd storageclass-test-claim-pvc-81c3e96e-3325-47da-81dd-35172e44a61f/
@@ -2023,7 +2052,7 @@ kubectl get pvc -A
 
 ![image-20231212110829207](./images/image-20231212110829207.png)
 
-#### 命令拓展
+### 命令拓展
 
 ```shell
 #查看pod所挂载pvc
@@ -2051,4 +2080,42 @@ VolumeMode:    Filesystem
 Used By:       alertmanager-6765944774-sd7v9
 Events:        <none>
 ```
+
+## Ingress
+
+### 概念
+
+- Ingress 是对集群中服务的外部访问进行管理的 API 对象，典型的访问方式是 HTTP。
+- Ingress 可以提供负载均衡、SSL 终结和基于名称的虚拟托管。
+- ingress 可以理解是service外的service，也可以理解为负载均衡，集群中一般对外访问会将service设置为NodePort，但是NodePort的端口一旦多起来将无法管理
+
+官网配图
+
+![ingress-diagram](./images/ingress-2720630.svg)
+
+Ingress 可为 Service 提供外部可访问的 URL、负载均衡流量、终止 SSL/TLS，以及基于名称的虚拟托管。 Ingress 控制器通常负责通过负载均衡器来实现 Ingress，尽管它也可以配置边缘路由器或其他前端来帮助处理流量。
+
+Ingress 不会公开任意端口或协议。 将 HTTP 和 HTTPS 以外的服务公开到 Internet 时，通常使用 [Service.Type=NodePort]或 [Service.Type=LoadBalancer]类型的 Service。
+
+### Ingress控制器-nginx
+
+#### 使用manifest安装
+
+##### YAML manifest
+
+```shell
+wget -O ingress-nginx-deploy.yaml https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/cloud/deploy.yaml
+```
+
+```shell
+kubectl apply -f ingress-nginx-deploy.yaml
+#镜像拉取失败可以配置镜像加速或者更换源
+kubectl get pod -n ingress-nginx
+```
+
+## Helm
+
+### 快速开始
+
+Helm是针对kubernetes的包管理器，类似于centos/redhat中yum，ubantu中apt等功能。
 

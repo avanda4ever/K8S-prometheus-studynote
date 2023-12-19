@@ -36,7 +36,7 @@ Matser组件提供了集群层面的管理功能，它们负责响应用户请�
 
 - kube-apiserver：负责对外暴露Kubernetes API；
 - etcd：用于存储Kubernetes集群的所有数据；
-- kube-scheduler: 负责为新创建的Pod选择可供其运行的节点；
+- kube-scheduler: 负责为新创建的Pod选择可供其运行的节点，节点调度器；
 - kube-controller-manager： 包含Node Controller，Deployment Controller，Endpoint Controller等等，通过与apiserver交互使相应的资源达到预期状态。
 
 **Node组件**
@@ -46,6 +46,88 @@ Node组件会运行在集群的所有节点上，它们负责管理和维护节�
 - kubelet：负责维护和管理节点上Pod的运行状态；
 - kube-proxy：负责维护主机上的网络规则以及转发。
 - Container Runtime：如Docker,rkt,runc等提供容器运行时环境。
+
+## 一些概念
+
+### kube-scheduler
+
+调度pod：预选-->优选-->得分-->调度节点
+
+- 预选：根据预先定义的规则，过滤掉不符合条件的节点，比较常见的两个预选规则是PodFitsResourcesPred和PodFitsHost-PortsPred。前一个规则用来判断，一个节点上的剩余资源，是不是能够满足 pod 的需求；而后一个规则，检查一个节点上某一个端口是不是已经被其他 pod 所使用了。
+- 优选：根据节点可用资源及其他规则，给剩余节点打分。常见两种LeastResourceAllocation 和 BalancedRe-sourceAllocation。前者计算节点剩余cpu和内存占总cpu和内存的比例，单调递增；后者计算节点上cpu和内存使用比例之差的绝对值，单调递减。其次还会根据其他因素进行选择，如节点亲和性、同一服务的pod分散程度等以保证高可用
+- 得分：上述得分乘以其权重后得到最终得分，默认权重为1
+
+### 边车模式（sidecar）
+
+- K8S集群服务本质上是负载，即代理
+- 实际实现中，反向代理并不是部署在某个节点，而是作为集群的边车部署在每个节点
+
+- 微服务领域核心概念，自带通信员。
+
+- K8S集群中，服务实现，实际是每个集群节点上部署了一个反向代理Sidecar。
+
++ 所有的访问都会被节点上的反向代理转换成对容器后端的访问。
+
+<img src="./images/image-20231219144524840.png" alt="image-20231219144524840" style="zoom: 33%;" />
+
+### kube-proxy与反向代理
+
+- 将服务照进上述概念中所说的反向代理，靠集群中的一个控制器"kube-proxy"实现。
+
+- 部署在集群的节点。
+- 通过apiserver，监听集群中的变化。
+- 当有新的服务被创建时，kube-proxy则会把集群服务的状态，属性，翻译成反向代理sidecar配置，交由反向代理实现。
+
+<img src="./images/image-20231219151220475.png" alt="image-20231219151220475" style="zoom:40%;" />
+
+- 反向代理的实现方式主要有三种，userspace，iptables，ipvs。
+- Netfilter框架，prerouting，forward，postrouting，input，output
+- 集群的反向代理实际是利用Netfilter框架中表的概念，允许自定义链，模块化的实现数据包的DNAT转换，即改变目的地址
+- kube-service是整个数据链的入口--->kube-svc--xxx链是某一服务的入口链--->kube-sep-xxx包含某一后端pod的端口和地址即为endpoint链
+
+<img src="./images/image-20231219153243332.png" alt="image-20231219153243332" style="zoom:50%;" />
+
+### OAUTH2.0协议
+
+- 用于用户，资源中心，与第三方应用之间授权。这里用于镜像拉取
+- 完整实现 OAuth 2.0 协议，三方应用首先获取以验证码表示的用户授权，然后用此验证码从资源服务器换取临时 token，最后使用 token 存取资源。
+
+<img src="./images/image-20231219154306738.png" alt="image-20231219154306738" style="zoom:33%;" />
+
+### 镜像仓库
+
+- 镜像仓库Registry的实现，用户直接将账户密码交给docker，由docker与鉴权服务器申请临时token。然后进行镜像的下载。
+- docker login，在拉取镜像时需先登陆docker镜像仓库。
+  - 输入账户及密码给docker
+  - 访问仓库https地址，通过v2接口来判断仓库版本及是否在线
+  - 使用用户提供的账户及密码，访问鉴权服务器，若访问成功则会把账户密码编码并保存在.docker/docker.json文件中
+- 镜像拉取
+  - Mainfests文件，定义了镜像的元数据。
+- K8S私有镜像自动拉取，将docker.json内容编码，以secret的方式作为pod的一部分传递给kubelet
+  1. 创建secret文件，文件包含docker.json
+  2. 创建pod，且pod编排中imagePullSecrets 指向第一步创建的 secret
+  3. kubelet监控到集群的变化，并通过apiserver获取pod定义，包括imagePullSecrets
+  4. kubelet调用docker创建容器，并把docek.json传递给docker用于拉取镜像
+
+### PLEG
+
+- kubelet通过docker daemon来控制容器的生命周期，1.24版本后通过containerd。
+
+- PLEG，即pod lifecycle event generator。kubelet用于检测容器的runtime健康检查机制
+- PLEG报错意味着容器可能runtime出现问题。
+- PLEG机制间隔为1秒，超时为3min
+
+### kubelet的两种角色
+
+- 节点就绪相关组件：ETCD，APISERVER，节点控制器，kubelet
+- kubelet角色一，集群控制器，定期从apiserver中获取pod等相关资源信息，控制节点上pod运行
+- 角色二，节点状况监视器，获取节点信息，以集群客户端的角色上报给apiserver。
+- NodeStatus机制，即角色二主要机制。PLEG是NodeStatus的主要判断依据。
+- PLEG将状态变化装成event传递给kubelet的主从syncLoop处理。
+
+<img src="./images/image-20231219164508668.png" alt="image-20231219164508668" style="zoom:33%;" />
+
+
 
 ## 搭建（二进制）
 
@@ -2118,4 +2200,10 @@ kubectl get pod -n ingress-nginx
 ### 快速开始
 
 Helm是针对kubernetes的包管理器，类似于centos/redhat中yum，ubantu中apt等功能。
+
+## Harbor
+
+
+
+## Istio
 

@@ -1,0 +1,15 @@
+[Unit]
+Description=Kubernetes Kubelet
+Documentation=https://github.com/kubernetes/kubernetes
+After=containerd.service
+Requires=containerd.service
+
+[Service]
+EnvironmentFile=/k8s/kubernetes/cfg/kubelet.conf
+ExecStart=/k8s/kubernetes/bin/kubelet $KUBELET_OPTS
+Restart=on-failure
+KillMode=process
+CPUAccounting=true
+MemoryAccounting=true
+[Install]
+WantedBy=multi-user.target

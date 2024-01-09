@@ -49,7 +49,403 @@ Node组件会运行在集群的所有节点上，它们负责管理和维护节�
 
 ## 一些概念
 
-### kube-scheduler
+### kubernetes核心组件
+
+Kubernetes 主要由以下几个核心组件组成：
+
+- etcd 保存了整个集群的状态；
+
+  - 分布式key-value存储
+  - 可用于服务发现、共享配置以及一致性保证
+  - RAFT协议
+  - 推荐集群中使用Etcd v3
+
+- kube-apiserver 提供了资源操作的唯一入口，并提供认证、授权、访问控制、API 注册和发现等机制；
+
+  - ```shell
+    #kubectl查看apiserver支持的版本及对象
+    kubectl api-versions
+    kubectl api-resources
+    ```
+
+- cloud-controller-manager在集群启用cloud provider时候才需要
+
+- kube-controller-manager 负责维护集群的状态，比如故障检测、自动扩展、滚动更新等；
+
+  - 必须启动的控制器：
+    - EndpointController
+    - ReplicationController
+    - PodGCController
+    - ResourceQuotaController
+    - NamespaceController
+    - ServiceAccountController
+    - GarbageCollectorController
+    - DaemonSetController
+    - JobController
+    - DeploymentController
+    - ReplicaSetController
+    - HPAController
+    - DisruptionController
+    - StatefulSetController
+    - CronJobController
+    - CSRSigningController
+    - CSRApprovingController
+    - TTLController
+  - 默认启动的可选控制器
+    - TokenController
+    - NodeController
+    - ServiceController
+    - RouteController
+    - PVBinderController
+    - AttachDetachController
+  - 默认禁止的可选控制器，通过配置选项开启
+    - BootstrapSignerController
+    - TokenCleanerController
+  - 在启动时设置 `--leader-elect=true` 后，controller manager 会使用多节点选主的方式选择主节点。实现高可用。
+
+- kube-scheduler 负责资源的调度，按照预定的调度策略将 Pod 调度到相应的机器上；
+
+  - 公平调度
+  - 资源高效利用
+  - QoS
+  - affinty和anti-affinty
+  - 数据本地化
+  - 内部负载干扰
+  - deadlines
+  - 其他影响调度的因素：
+    - 如果 Node Condition 处于 MemoryPressure，则所有 BestEffort 的新 Pod（未指定 resources limits 和 requests）不会调度到该 Node 上
+    - 如果 Node Condition 处于 DiskPressure，则所有新 Pod 都不会调度到该 Node 上
+    - 为了保证 Critical Pods 的正常运行，当它们处于异常状态时会自动重新调度。Critical Pods 是指
+      - annotation 包括 `scheduler.alpha.kubernetes.io/critical-pod=''`
+      - tolerations 包括 `[{"key":"CriticalAddonsOnly", "operator":"Exists"}]`
+      - priorityClass 为 `system-cluster-critical` 或者 `system-node-critical`
+
+- kubelet 负责维持容器的生命周期，同时也负责 Volume（CVI）和网络（CNI）的管理；
+
+  - 每个node上都运行着一个kubelet，默认监听10250端口
+  - 每个 Kubelet 进程会在 API Server 上注册所在Node节点的信息，定期向 Master 节点汇报该节点的资源使用情况，并通过 cAdvisor 监控节点和容器的资源。
+
+- Container runtime 负责镜像管理以及 Pod 和容器的真正运行（CRI），默认的容器运行时为 Docker（1.24版本之前）；
+
+- kube-proxy 负责为 Service 提供 cluster 内部的服务发现和负载均衡；
+
+### kubernetes其他组件
+
+- kube-dns 负责为整个集群提供 DNS 服务（coredns下文部署包含）
+- Ingress Controller 为服务提供外网入口（nginx-ingress）
+- 网络组件，集群内部网络通信（calico）
+- Heapster 提供资源监控
+- Dashboard 提供 GUI
+- Federation 提供跨可用区的集群
+- Fluentd-elasticsearch 提供集群日志采集、存储与查询
+- Kube-state-metrics+prometheus实现集群监控
+
+### kubernet多组件通信原理
+
+- APIserver负责etcd存储的所有操作，且只有APIserver才能直接操作etcd
+- APIserver对内（集群内所有组件）和对外（用户）提供统一的REST API，其他组件均通过API Server通信
+  - Contorller Manager、Scheduler、Kube-proxy和Kubelet等均通过API Server watch API监测资源变化并对资源进行相关操作
+  - 所有更新资源操作均通过REST API进行
+- APIserver也会直接调用kubelet API
+
+### kubernetes-scheduler指定节点调度
+
+- nodeSelector：调度到指定label的node
+
+  - ```shell
+    nodeSelector:
+           kubernetes.io/hostname: 10.206.0.7
+    ```
+
+- nodeAffinity：功能丰富的node选择器，支持集合操作
+
+  - requiredDuringSchedulingIgnoredDuringExecution：必须满足条件
+
+  - preferredDuringSchedulingIgnoredDuringExecution：优选条件
+
+  - ```yaml
+    #以下示例node：
+    #必须满足标签kubernetes.io/e2e-az-name，必须包含value：e2e-az1，e2e-az1
+    #优选another-node-label-key=another-node-label-value
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: with-node-affinity
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/e2e-az-name
+                operator: In
+                values:
+                - e2e-az1
+                - e2e-az2
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: another-node-label-key
+                operator: In
+                values:
+                - another-node-label-value
+      containers:
+      - name: with-node-affinity
+        image: gcr.io/google_containers/pause:2.0
+    ```
+
+- podAffinity：调度到满足条件的pod所在的node，基于pod选择node
+
+  - 支持podAffinity和podAntiAffinity
+
+  - ```yaml
+    #以下示例：
+    #podAffinity，将pod调度到包含至少一个带有security=S1且有pod运行中的node
+    #podAntiAffinity：不调度到包含至少一个带有security=S2且有pod运行中的node
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: with-pod-affinity
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: security
+                operator: In
+                values:
+                - S1
+            topologyKey: failure-domain.beta.kubernetes.io/zone
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: security
+                  operator: In
+                  values:
+                  - S2
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: with-pod-affinity
+        image: gcr.io/google_containers/pause:2.0
+    ```
+
+### kube-scheduler的Taints和tolerations
+
+- tains和tolerations用于保证pod不被调度到不合适的node
+- tains用于node
+  - NoSchedule：新的pod不调度到该node，旧的pod正常运行
+  - PreferNoSchedule：尽量不调度到该Node
+  - NoExecute：新的 Pod 不调度到该 Node 上，并且删除（evict）已在运行的 Pod。Pod 可以增加一个时间（tolerationSeconds）
+
+### scheduler调度优先级
+
+指定pod优先级前需要先定义一个PriorityClass（pc）
+
+```shell
+apiVersion: v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 1000000
+globalDefault: false
+description: "This priority class should be used for XYZ service pods only."
+```
+
+- value为32位整数，值越大优先级越高
+- globalDefault用于未配置 PriorityClassName的pod，整个集群中应该只有一个PriorityClass将其设置为true
+
+在 PodSpec 中通过 PriorityClassName 设置 Pod 的优先级
+
+```shell
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    env: test
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: IfNotPresent
+  priorityClassName: high-priority
+```
+
+如网络组件calico-node的daemonset中pod
+
+```shell
+preemptionPolicy: PreemptLowerPriority
+  priority: 2000001000
+  priorityClassName: system-node-critical
+  restartPolicy: Always
+  schedulerName: default-scheduler
+```
+
+通过describe可以查看到pc的配置
+
+```shell
+[root@master01 alertmanager]# kubectl describe pc system-node-critical 
+Name:              system-node-critical
+Value:             2000001000
+GlobalDefault:     false
+PreemptionPolicy:  PreemptLowerPriority
+Description:       Used for system critical pods that must not be moved from their current node.
+Annotations:       <none>
+Events:            <none>
+```
+
+### Node驱逐
+
+默认情况下，
+
+- kubelet每隔10s更新node状态
+
+- kube-controller-manager每隔5秒检查Node状态
+
+- kube-controller-manager会在kubelet未更新状态的40s时，将node标记为NotReady
+
+- 当node 5min未更新状态，kube-controller-manager将对node上的pod进行驱逐
+
+  - Kubernetes 会自动给 Pod 添加针对 `node.kubernetes.io/not-ready` 和 `node.kubernetes.io/unreachable` 的容忍度，且配置 `tolerationSeconds=300`
+
+  - 可以通过可以通过 tolerations 配置 Pod 的容忍度，来覆盖默认的配置，达到及时驱逐pod的目的
+
+  - ```shel
+    tolerations:
+    - key: "node.kubernetes.io/unreachable"
+      operator: "Exists"
+      effect: "NoExecute"
+      tolerationSeconds: 10
+    - key: "node.kubernetes.io/not-ready"
+      operator: "Exists"
+      effect: "NoExecute"
+      tolerationSeconds: 10
+    ```
+
+- Node 控制器在节点异常后，会按照默认的速率（`--node-eviction-rate=0.1`，即每10秒一个节点的速率）进行 Node 的驱逐。
+- Node 控制器按照 Zone 将节点划分为不同的组，再根据 Zone 的状态进行速率调整。
+  - Normal：所有节点都 Ready，默认速率驱逐。
+  - PartialDisruption：即超过33% 的节点 NotReady 的状态。当异常节点比例大于 `--unhealthy-zone-threshold=0.55` 时开始减慢速率
+    - 小集群（即节点数量小于 `--large-cluster-size-threshold=50`）：停止驱逐
+    - 大集群，减慢速率为 `--secondary-node-eviction-rate=0.01`
+  - FullDisruption：所有节点都 NotReady，返回使用默认速率驱逐。但当所有 Zone 都处在 FullDisruption 时，停止驱逐
+
+### 典型创建pod流程
+
+<img src="./images/image-20231220112950620.png" alt="image-20231220112950620" style="zoom: 40%;" />
+
+1. 用户通过rest api创建pod
+2. apiserver将状态写入etcd
+3. scheduler监测到apiserver中新pod，调度并绑定新pod至node，返回绑定信息至apiserver
+4. kubelet监测到新pod调度过来，通过container runtime运行该pod
+5. kubelet监测到container runtime返回的runtime运行状态，并更新至apiserver
+6. 用户得到反馈
+
+### kubelet的pod管理
+
+- 获取pod清单
+  - kubelet以PodSpec的方式工作，PodSpec 是描述一个 Pod 的 YAML 或 JSON 对象
+  -  kubelet 采用一组通过各种机制提供的 PodSpecs（主要通过 apiserver），并确保这些 PodSpecs 中描述的 Pod 正常健康运行。
+- 通过 API Server 获取 Pod 清单及创建 Pod 
+  - Kubelet 通过 API Server Client(Kubelet 启动时创建)使用 Watch 加 List 的方式监听 "/registry/nodes/$ 当前节点名" 和 “/registry/pods” 目录，将获取的信息同步到本地缓存中。
+  - Kubelet 监听 etcd，所有针对 Pod 的操作都将会被 Kubelet 监听到。如果发现有新的绑定到本节点的 Pod，则按照 Pod 清单的要求创建该 Pod。
+  - 如果发现本地的 Pod 被修改，则 Kubelet 会做出相应的修改，比如删除 Pod 中某个容器时，则通过 Docker Client 删除该容器。 如果发现删除本节点的 Pod，则删除相应的 Pod，并通过 Docker Client 删除 Pod 中的容器。
+  - Kubelet 读取监听到的信息，如果是创建和修改 Pod 任务，则执行如下处理
+    - 为该 Pod 创建一个数据目录
+    - 从 API Server 读取该 Pod 清单
+    - 为该 Pod 挂载外部卷
+    - 下载 Pod 用到的 Secret
+    - 检查已经在节点上运行的 Pod，如果该 Pod 没有容器或 Pause 容器没有启动，则先停止 Pod 里所有容器的进程。如果在 Pod 中有需要删除的容器，则删除这些容器
+    - 用 “kubernetes/pause” 镜像为每个 Pod 创建一个容器。Pause 容器用于接管 Pod 中所有其他容器的网络。每创建一个新的 Pod，Kubelet 都会先创建一个 Pause 容器，然后创建其他容器
+    - 为 Pod 中的每个容器做如下处理
+      1. 为容器计算一个 hash 值，然后用容器的名字去 Docker 查询对应容器的 hash 值。若查找到容器，且两者 hash 值不同，则停止 Docker 中容器的进程，并停止与之关联的 Pause 容器的进程；若两者相同，则不做任何处理；
+      2. 如果容器被终止了，且容器没有指定的 restartPolicy，则不做任何处理；
+      3. 调用 Docker Client 下载容器镜像，调用 Docker Client 运行容器。
+
+### Static Pod
+
+- 以非api server方式创建的pod为static pod
+- kubelet将static pod的状态汇报至apiserver
+- apiserver为该static pod创建一个mirror pod与其匹配
+- 通过mirror pod的状态真实反映static pod的状态，当static pod被删除时，与之对应的mirror pod也会被删除
+
+### 容器健康检查
+
+Pod通过两类探针检查容器的健康状态：
+
+- LivenessProbe探针：用于判断容器是否健康，告诉kubelet一个容器什么时候处于不健康的状态。如果LivenessProbe探针探测到容器不健康，则kubelet删除该容器。根据重启策略做相应的处理。如果一个容器不包含LivenessProbe，那么该容器的LivenessProbe探针返回的值永远是success
+  - ExecAction：在容器内部执行一条命令，如果该命令的退出状态为0，则表明容器健康
+  - TCPSocketAction：通过容器的IP地址和端口执行TCP检查，如果端口能被访问，则表明容器健康；
+  - HTTPGetAction：通过容器的IP地址和端口号及路径调用HTTP GET方法，如果响应的状态码大于等于 200 且小于 400，则认为容器状态健康。
+- ReadinessProbe探针：用于判断容器是否启动完成且准备接收请求。如果 ReadinessProbe 探针探测到失败，则 Pod 的状态将被修改。Endpoint Controller 将从 Service 的 Endpoint 中删除包含该容器所在 Pod 的 IP 地址的 Endpoint 条目。
+
+LivenessProbe 和 ReadinessProbe 探针包含在 Pod 定义的 spec.containers.{某个容器} 中。
+
+```yaml
+containers:
+      - image: kubebiz/kube-state-metrics:v2.7.0
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        name: kube-state-metrics
+        ports:
+        - containerPort: 8080
+          name: http-metrics
+        - containerPort: 8081
+          name: telemetry
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8081
+```
+
+### 常见端口
+
+- apiserver：6443
+- etcd：2379
+- scheduler：10251
+- kube-controller-manager：10252
+- cloud-controller-manager：10253
+- kubelet：10250
+- cadvisor：4194
+- NodePort SVC：30000-32767
+
+### 版本兼容性
+
+- HA集群中，所有的kube-apiserver实例最多差一个小版本
+- kubelet最多只能与apiserver差两个小版本
+- kube-controller-manager，kube-scheduler最多只能与apiserver差一个小版本
+
+### 升级顺序
+
+依赖关系
+
+- 在升级前，需要确保 ValidatingWebhookConfiguration 和 MutatingWebhookConfiguration 已经升级到最新的 API 版本（兼容新旧版本的 kube-apiserver）
+- kube-apiserver 所有实例需要在升级其他组件（如kube-controller-manager）之前完成升级
+- kube-controller-manager、kube-scheduler 和 cloud-controller-manager 需要在 kube-apiserver 升级完成之后才能升级
+- kubelet 需要在 kube-apiserver 升级完成之后才能升级，且升级前需要 `kubectl drain <node>`（即 kubelet 不支持本地小版本升级）
+- kube-proxy 需要确保跟同节点的 kubelet 在同一个版本
+
+### API对象
+
+- API对象是K8S集群中的管理操作单元
+- 每引入一个新的新功能，一定会引入新的操作API对象，例如副本集Replica Set对应的API对象是RS
+- 每个API包含三大类属性
+  - metadata（元数据），用来标识API对象，每个对象至少有三个元数据，namespace，name，uid；可以通过不同的labels来匹配不同的对象。
+  - spec（规范），规范描述了用户期望K8s集群中的分布式系统达到的理想状态（Desired State），例如用户可以通过复制控制器Replication Controller设置期望的Pod副本数为3。
+  - status（状态），status描述了系统实际当前达到的状态（Status）。
+- K8s中所有的配置都是通过API对象的spec去设置的。
+- 所有的操作都是声明式（Declarative）的而不是命令式（Imperative）的，稳定
+
+### kube-scheduler简单调度
 
 调度pod：预选-->优选-->得分-->调度节点
 
